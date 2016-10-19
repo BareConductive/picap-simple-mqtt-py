@@ -46,43 +46,70 @@ def print_help():
   print "Sends Pi Cap touch readings through MQTT - MUST be run as root.\n"
   print "Usage: python simple-mqtt.py [OPTIONS]\n"
   print "Options:"
-  print "  -b, --broker  MQTT broker [REQUIRED]"
-  print "      --help    displays this message"
+  print "  -b, --broker    MQTT broker [REQUIRED]"
+  print "  -u, --username  MQTT broker username [OPTIONAL]"
+  print "  -p, --password  MQTT broker password [OPTIONAL]"
+  print "      --help      displays this message"
   sys.exit(0)
 
-broker = ""
+broker   = ""
+username = None
+password = None
 
 # arguments parsing
 def parse_args(argv):
   # we need to tell python that those variables are global
   # we don't want to create new local copies, but change global state
-  global broker
+  global broker, username, password
 
   try:
-    opts, args = getopt.getopt(argv, "b:", [ "broker=", "help" ])
+    opts, args = getopt.getopt(argv, "b:u:p:", [ "broker=", "username=", "password=", "help" ])
   except getopt.GetoptError:
     print_help()
 
   for opt, arg in opts:
     if opt in ("-b", "--broker"):
       broker = arg
+    elif opt in ("-u", "--username"):
+      username = arg
+    elif opt in ("-p", "--password"):
+      password = arg
     elif opt in ("--help"):
       print_help()
 
 # parse arguments on start
 parse_args(sys.argv[1:])
 
+# stop if no broker is provided
+if not broker:
+  print_help()
+
 # setup MQTT
 client = Mosquitto()
-client.connect("mqtt://" + broker)
+
+# set username/password if needed
+if username:
+  client.username_pw_set(username, password)
+
+# connect to broker
+# Python version doesn't need 'mqtt://'
+client.connect(broker)
 
 while True:
   if sensor.touch_status_changed():
     sensor.update_touch_data()
+
     for i in range(12):
       if sensor.is_new_touch(i):
-        client.publish("picap/touched", i)
+        if username:
+          client.publish(username + "/feeds/picap-touched", i)
+        else:
+          client.publish("/feeds/picap-touched", i)
+
       elif sensor.is_new_release(i):
-        client.publish("picap/released", i)
+        if username:
+          client.publish(username + "/feeds/picap-released", i)
+        else:
+          client.publish("/feeds/picap-released", i)
 
   sleep(0.01)
